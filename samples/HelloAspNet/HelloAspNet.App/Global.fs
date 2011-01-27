@@ -1,6 +1,7 @@
 ﻿namespace HelloAspNet.App
 
 open System
+open System.Collections.Generic
 open System.Web
 open System.Web.Routing
 open Frack
@@ -13,13 +14,16 @@ type Global() =
   static member RegisterRoutes(routes:RouteCollection) =
     // Echo the request body contents back to the sender. 
     // Use Fiddler to post a message and see it return.
-    let cts = new System.Threading.CancellationTokenSource()
-    let app = Owin.create (fun request -> async {
+    let app = fun (req: IDictionary<string, obj>) -> async {
+//      let! body = Request.readBody req?input
       let greeting = "Howdy!\r\n"B
-      return ("200 OK", (dict [("Content-Type", "text/html")]), seq { yield greeting :> obj }) }) cts.Token
+      return ("200 OK", (dict [("Content-Type", "text/html")]),
+              seq { yield greeting :> obj }) }
+//              seq { yield greeting :> obj; yield body :> obj }) }
+
     // Uses the head middleware.
     // Try using Fiddler and perform a HEAD request.
-    routes.MapFrackRoute("{*path}", app)
+    routes.MapFrackRoute("{*path}", app |> (log >> head))
 
   member x.Start() =
     Global.RegisterRoutes(RouteTable.Routes)

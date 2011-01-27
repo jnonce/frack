@@ -18,20 +18,21 @@ module AspNet =
   [<System.Runtime.CompilerServices.Extension>]
   let ToOwinRequest(context:System.Web.HttpContextBase) =
     let request = context.Request
-    let asyncRead = async {
-      let! bytes = request.InputStream.AsyncRead(1024)
-      return ArraySegment<_>(bytes) }
+    let uri = request.Url.AbsolutePath + "?" + request.Url.Query
+    let pi, qs = uri |> splitUri
+    let asyncRead = request.InputStream |> AsyncSeq.readInSegments
     let owinRequest = Dictionary<string, obj>() :> IDictionary<string, obj>
-    owinRequest.Add("RequestMethod", request.HttpMethod)
-    owinRequest.Add("RequestUri", (request.Url.AbsolutePath + "?" + request.Url.Query))
-    request.Headers.AsEnumerable() |> Seq.iter (fun (k, v) -> owinRequest.Add(k, v))
+    owinRequest.Add("METHOD", request.HttpMethod)
+    // TODO: SCRIPT_NAME should contain the path to which the app was mounted.
+    owinRequest.Add("SCRIPT_NAME", "/")
+    owinRequest.Add("PATH_INFO", pi)
+    owinRequest.Add("QUERY_STRING", qs)
+    // Add the request headers, appending "HTTP_" to the front of each.
+    request.Headers.AsEnumerable() |> Seq.iter (fun (k, v) -> owinRequest.Add("HTTP_" + k, v))
     owinRequest.Add("url_scheme", request.Url.Scheme)
     owinRequest.Add("host", request.Url.Host)
     owinRequest.Add("server_port", request.Url.Port)
-    owinRequest.Add("RequestBody", (Action<Action<_>, Action<_>>(fun onNext onErr ->
-       try
-         Async.StartWithContinuations(asyncRead, onNext.Invoke, onErr.Invoke, onErr.Invoke)
-       with e -> onErr.Invoke(e))))
+    owinRequest.Add("input", asyncRead)
     owinRequest
 
   type System.Web.HttpContextBase with
@@ -40,19 +41,18 @@ module AspNet =
 
   [<System.Runtime.CompilerServices.Extension>]
   let Reply(response: HttpResponseBase, status, headers: IDictionary<string, string>, body: seq<obj>) =
-    if headers.ContainsKey("Content-Length") then
-      response.ContentType <- headers.["Content-Length"]
-    let statusCode, statusDescription = splitStatus status
-    response.StatusCode <- statusCode
-    response.StatusDescription <- statusDescription
+    if headers.ContainsKey("Content-Type") then
+      response.ContentType <- headers.["Content-Type"]
+    let code, desc = splitStatus status
+    response.StatusCode <- code
+    response.StatusDescription <- desc
 //    headers |> Dict.toSeq |> Seq.iter (fun (k, v) -> response.Headers.Add(k, v))
-    let output = response.OutputStream
-    ByteString.write output body
+    ByteString.write response.OutputStream body
 
   type HttpResponseBase with
     member response.Reply(status, headers, body) = Reply(response, status, headers, body)
 
-  type OwinHttpHandler (app: Action<IDictionary<string, obj>, Action<string, IDictionary<string, string>, seq<obj>>, Action<exn>>) =
+  type OwinHttpHandler (app: IDictionary<string, obj> -> Async<string * IDictionary<string, string> * seq<obj>>) =
     interface System.Web.IHttpHandler with
       /// Since this is a pure function, it can be reused as often as desired.
       member this.IsReusable = true
@@ -61,10 +61,8 @@ module AspNet =
         let contextBase = context.ToContextBase()
         let request = contextBase.ToOwinRequest()
         let response = contextBase.Response
-        let reply status headers body = response.Reply(status, headers, body)
-        app.Invoke(request,
-                   Action<string, IDictionary<string, string>, seq<obj>>(reply),
-                   Action<exn>(fun e -> printfn "%A" e))
+        let errHandler e = printfn "%A" e
+        Async.StartWithContinuations(app request, response.Reply, errHandler, errHandler)
 
   /// Defines a System.Web.Routing.IRouteHandler for hooking up Frack applications.
   type OwinRouteHandler(app) =
@@ -76,7 +74,7 @@ module AspNet =
       member this.GetHttpHandler(context) = OwinHttpHandler app :> IHttpHandler
 
   [<System.Runtime.CompilerServices.Extension>]
-  let MapFrackRoute(routes: RouteCollection, path: string, app: Action<_,_,_>) =
+  let MapFrackRoute(routes: RouteCollection, path: string, app) =
     routes.Add(new Route(path, new OwinRouteHandler(app))) 
 
   type System.Web.Routing.RouteCollection with

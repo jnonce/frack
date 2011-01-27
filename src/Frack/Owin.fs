@@ -11,30 +11,17 @@ module Owin =
           cancellationToken = cancellationToken))
     
 module Request =
-  open FSharp.Monad
+  open Frack.Collections
 
   /// Reads the request body into a buffer and invokes the onCompleted callback with the buffer.
-  let readBody onCompleted onError (requestBody: obj) =
-    let requestBody = requestBody :?> Action<Action<ArraySegment<byte>>, Action<exn>>
-    // We rely on the underlying implementation to return and perform the asynchronous retrieval.
-    let nextSegment = Cont(fun onSeg -> requestBody.Invoke(Action<_>(onSeg), onError))
-    let rec loop acc = cont {
-      let! chunk = nextSegment
-      if chunk.Count = 0 then
-        // Invoke the continuation with an empty list.
-        // This will cause the ArraySegment<byte> list to be created in order.
-        let chunks: ArraySegment<_> list = acc []
-        // Determine the total number of bytes read.
-        let length    = chunks |> List.fold (fun len chunk -> len + chunk.Count) 0 
-        // Read the contents of the body segments into a local buffer.
-        let buffer, _ = chunks |> List.fold (fun (bs, offset) chunk ->
-          Buffer.BlockCopy(chunk.Array, chunk.Offset, bs, offset, chunk.Count)
-          (bs, offset + chunk.Count)) ((Array.create length 0uy), 0)
-        return buffer
-      // We append the last call as the tail of the previous call.
-      else return! loop (fun chunks -> chunk::chunks) }
-    runCont (loop id) onCompleted 
-
-  /// Reads the request body as x-http-form-urlencoded.
-  let readAsFormUrlEncoded onCompleted onError requestBody =
-    readBody (UrlEncoded.parseForm >> onCompleted) onError requestBody
+  let readBody (requestBody: obj) =
+    let requestBody = requestBody :?> AsyncSeq<ArraySegment<byte>> |> AsyncSeq.toSeq
+    async {
+      let! chunks = requestBody
+      // Determine the total number of bytes read.
+      let length = chunks |> Seq.fold (fun len chunk -> len + chunk.Count) 0 
+      // Read the contents of the body segments into a local buffer.
+      let buffer, _ = chunks |> Seq.fold (fun (bs, offset) chunk ->
+        Buffer.BlockCopy(chunk.Array, chunk.Offset, bs, offset, chunk.Count)
+        (bs, offset + chunk.Count)) ((Array.create length 0uy), 0)
+      return buffer }
