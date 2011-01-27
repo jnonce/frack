@@ -14,12 +14,13 @@ type Global() =
   static member RegisterRoutes(routes:RouteCollection) =
     // Echo the request body contents back to the sender. 
     // Use Fiddler to post a message and see it return.
-    let app = fun (req: IDictionary<string, obj>) -> async {
+    let app (req: IDictionary<string, obj>) = async {
+      // AsyncSeq doesn't appear to like NetworkStream.
 //      let! body = Request.readBody req?input
+      let! body = async { return Array.create 0 0uy }
       let greeting = "Howdy!\r\n"B
       return ("200 OK", (dict [("Content-Type", "text/html")]),
-              seq { yield greeting :> obj }) }
-//              seq { yield greeting :> obj; yield body :> obj }) }
+              seq { yield greeting :> obj; yield body :> obj }) }
 
     // Uses the head middleware.
     // Try using Fiddler and perform a HEAD request.

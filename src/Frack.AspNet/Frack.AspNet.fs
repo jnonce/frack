@@ -41,11 +41,11 @@ module AspNet =
 
   [<System.Runtime.CompilerServices.Extension>]
   let Reply(response: HttpResponseBase, status, headers: IDictionary<string, string>, body: seq<obj>) =
-    if headers.ContainsKey("Content-Type") then
-      response.ContentType <- headers.["Content-Type"]
     let code, desc = splitStatus status
     response.StatusCode <- code
     response.StatusDescription <- desc
+    if headers.ContainsKey("Content-Type") then
+      response.ContentType <- headers.["Content-Type"]
 //    headers |> Dict.toSeq |> Seq.iter (fun (k, v) -> response.Headers.Add(k, v))
     ByteString.write response.OutputStream body
 
