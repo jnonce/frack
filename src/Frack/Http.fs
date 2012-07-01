@@ -16,6 +16,7 @@
 //----------------------------------------------------------------------------
 module Frack.Http
 
+open System
 open System.Net
 open System.Net.Sockets
 open Frack
@@ -38,6 +39,11 @@ type Server (app, ?backlog, ?bufferSize) =
         x.Start(ipAddress, ?port = port)
 
     member x.Start(?ipAddress, ?port) = 
-        let pool = BufferPool(backlog, bufferSize)
+        let pool = new BufferPool(backlog, bufferSize)
         let tcp = Tcp.Server(run pool, backlog)
-        tcp.Start(?ipAddress = ipAddress, ?port = port)
+        let subscription = tcp.Start(?ipAddress = ipAddress, ?port = port)
+        { new IDisposable with
+            member x.Dispose() =
+                subscription.Dispose()
+                pool.Dispose()
+        }

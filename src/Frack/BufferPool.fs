@@ -1,16 +1,33 @@
 ﻿namespace Frack
 
+open System
 open System.Collections.Concurrent
-open FSharpx
+open System.Diagnostics.Contracts
 
-type BS = ByteString
+type A = System.Net.Sockets.SocketAsyncEventArgs
+type BS = FSharpx.ByteString
 
 type BufferPool(totalBuffers: int, bufferSize) =
+    let mutable disposed = false
     let buffer = Array.zeroCreate<byte> (totalBuffers * bufferSize)
-    let queue = new BlockingCollection<BS>(totalBuffers)
+    let queue = new BlockingCollection<_>(totalBuffers)
     do for i in 0 .. totalBuffers - 1 do
-        let bs = BS(buffer, bufferSize * i, bufferSize)
-        queue.Add(bs)
+        queue.Add(bufferSize * i)
 
-    member x.Take() = queue.Take()
-    member x.Add(bs) = queue.Add(bs)
+    member x.Take() = BS(buffer, queue.Take(), bufferSize)
+
+    member x.Add(offset) = queue.Add(offset)
+
+    member x.Dispose() =
+        x.Dispose(true)
+        GC.SuppressFinalize(x)
+
+    member private x.Dispose(disposing) =
+        if not disposed then
+            if disposing then
+                queue.CompleteAdding()
+                queue.Dispose()
+            disposed <- true
+
+    interface IDisposable with
+        member x.Dispose() = x.Dispose()

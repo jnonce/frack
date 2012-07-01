@@ -24,7 +24,6 @@ open FSharp.Control
 open FSharpx
 
 type BS = ByteString
-
 type MessageBody = AsyncSeq<BS>
 
 type Request = {

@@ -8,9 +8,6 @@ open Frack
 open FSharp.Control
 open FSharpx
 
-type A = SocketAsyncEventArgs
-type BS = ByteString
-
 exception SocketIssue of SocketError with
     override this.ToString() = string this.Data0
 
@@ -69,10 +66,10 @@ type Socket with
             let! bytesRead = x.AsyncReceive(buf)
             if bytesRead > 0 then
                 let chunk = BS(buf.Array.[buf.Offset..buf.Offset + bytesRead])
-                bufferPool.Add(buf)
+                bufferPool.Add(buf.Offset)
                 yield chunk
                 yield! loop ()
-            else bufferPool.Add(buf)
+            else bufferPool.Add(buf.Offset)
         }
         loop ()
 
@@ -87,7 +84,7 @@ type Socket with
                 let buf = bufferPool.Take()
                 System.Buffer.BlockCopy(bs.Array, bs.Offset, buf.Array, buf.Offset, bs.Count)
                 do! x.AsyncSend(BS(buf.Array, buf.Offset, bs.Count))
-                bufferPool.Add(buf)
+                bufferPool.Add(buf.Offset)
                 do! loop rest
             | Nil -> ()
         }
