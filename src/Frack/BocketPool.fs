@@ -20,18 +20,30 @@ open System
 open System.Collections.Concurrent
 open System.Diagnostics.Contracts
 
-type BS = FSharpx.ByteString
+type A = System.Net.Sockets.SocketAsyncEventArgs
 
-type BufferPool(totalBuffers: int, bufferSize) =
+type BocketPool(count: int, ?bufferSize) =
     let mutable disposed = false
-    let buffer = Array.zeroCreate<byte> (totalBuffers * bufferSize)
-    let queue = new BlockingCollection<_>(totalBuffers)
-    do for i in 0 .. totalBuffers - 1 do
-        queue.Add(bufferSize * i)
+    let bufferSize = defaultArg bufferSize 0
+    let queue = new BlockingCollection<_>(count)
+    let buffer =
+        if bufferSize > 0 then
+            Array.zeroCreate<byte> (count * bufferSize)
+        else null
+    do for i in 0 .. count - 1 do
+        let args = new A()
+        if buffer <> null then
+            args.SetBuffer(buffer, bufferSize * i, bufferSize)
+        queue.Add(args)
 
-    member x.Take() = BS(buffer, queue.Take(), bufferSize)
+    member x.Take() = queue.Take()
 
-    member x.Add(offset) = queue.Add(offset)
+    member x.Add(args: A) =
+        Contract.Requires(args <> null)
+        Contract.Ensures(args <> null && (buffer = null || args.Count = bufferSize))
+        if buffer <> null && args.Count <> bufferSize then
+            args.SetBuffer(buffer, args.Offset, bufferSize)
+        queue.Add(args)
 
     member x.Dispose() =
         x.Dispose(true)
@@ -41,6 +53,9 @@ type BufferPool(totalBuffers: int, bufferSize) =
         if not disposed then
             if disposing then
                 queue.CompleteAdding()
+                while queue.Count > 1 do
+                    let args = queue.Take()
+                    args.Dispose()
                 queue.Dispose()
             disposed <- true
 

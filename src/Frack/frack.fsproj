@@ -38,6 +38,7 @@
   <Import Project="..\..\lib\FSharp\Microsoft.FSharp.Targets" />
   <Import Project="$(SolutionDir)\.nuget\nuget.targets" />
   <ItemGroup>
+    <Compile Include="BocketPool.fs" />
     <Compile Include="BufferPool.fs" />
     <Compile Include="Sockets.fs" />
     <Compile Include="Tcp.fs" />
