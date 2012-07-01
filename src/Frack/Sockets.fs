@@ -19,8 +19,9 @@ let asyncDo op prepare select =
         let k (args: A) =
             match args.SocketError with
             | SocketError.Success ->
+                let result = select args
                 args.Dispose()
-                ok <| select args
+                ok result
             | e ->
                 args.Dispose()
                 error <| SocketIssue e
