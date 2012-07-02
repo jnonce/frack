@@ -36,6 +36,7 @@ type Server(handle, ?backlog) =
         let port = defaultArg port 80
         let endpoint = IPEndPoint(ipAddress, port)
         let cts = new CancellationTokenSource()
+        let pool = new BocketPool(backlog)
 
         let listener =
             new Socket(
@@ -52,7 +53,7 @@ type Server(handle, ?backlog) =
         let runHandler (connection: Socket) =
             let finish comp = async {
                 let! choice = comp
-                do! connection.AsyncDisconnect()
+                do! connection.AsyncDisconnect(pool)
                 match choice with
                 | Choice1Of2 () -> ()
                 | Choice2Of2 (e: exn) ->
@@ -63,7 +64,7 @@ type Server(handle, ?backlog) =
             |> finish
 
         let runServer () = async {
-            for connection : Socket in listener.AsyncAcceptSeq() do
+            for connection : Socket in listener.AsyncAcceptSeq(pool) do
                 Async.StartWithContinuations(runHandler connection, ignore, log, log, cts.Token)
         }
 

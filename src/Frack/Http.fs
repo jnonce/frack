@@ -39,7 +39,7 @@ type Server (app, ?backlog, ?bufferSize) =
         x.Start(ipAddress, ?port = port)
 
     member x.Start(?ipAddress, ?port) = 
-        let pool = new BufferPool(backlog, bufferSize)
+        let pool = new BocketPool(backlog, bufferSize)
         let tcp = Tcp.Server(run pool, backlog)
         let subscription = tcp.Start(?ipAddress = ipAddress, ?port = port)
         { new IDisposable with
